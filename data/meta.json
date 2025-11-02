@@ -1,0 +1,22 @@
+{
+    "classes": [
+        {
+            "title": "reflective_jacket",
+            "shape": "rectangle",
+            "color": "#8A2A0F",
+            "geometry_config": {},
+            "id": 6488390,
+            "hotkey": ""
+        },
+        {
+            "title": "safety_helmet",
+            "shape": "rectangle",
+            "color": "#0F8A67",
+            "geometry_config": {},
+            "id": 6488389,
+            "hotkey": ""
+        }
+    ],
+    "tags": [],
+    "projectType": "images"
+}

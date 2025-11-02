@@ -1,0 +1,118 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Dataset (large files)
+data/images/
+data/labels/
+data/extracted/
+data/test/
+data/valid/
+data/*.tar
+data/*.tar.gz
+data/*.zip
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.avi
+*.mov
+
+# Model weights (large files)
+runs/
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Events and reports (generated data)
+events/*.csv
+reports/*.csv
+reports/*.png
+reports/*.pdf
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Claude/AI artifacts
+.claude/
+*.claude
+
+# Dataset archives (very large)
+*.tar
+*.tar.gz
+*.zip
+*.rar
+data/*.tar
+data/extracted/
+
+# Sample videos (large)
+samples/*.mp4
+samples/*.avi
+samples/*.mov
+
+# Keep directory structure
+!data/images/.gitkeep
+!data/labels/.gitkeep
+!events/.gitkeep
+!reports/.gitkeep
+!runs/.gitkeep
+!samples/.gitkeep

@@ -1,0 +1,56 @@
+# Report Configuration
+reporting:
+  # Time settings
+  daily_report_hour: 18  # 24-hour format
+  timezone: "Asia/Taipei"
+
+  # Thresholds
+  thresholds:
+    warning_violation_rate: 5.0  # percentage
+    critical_violation_rate: 10.0  # percentage
+
+  # Report layout
+  layout:
+    include_charts: true
+    include_zone_breakdown: true
+    include_hourly_distribution: true
+    max_violations_to_detail: 20
+
+  # Output formats
+  formats:
+    - csv
+    - png
+    - pdf
+
+  # Chart settings
+  charts:
+    dpi: 150
+    figsize: [12, 8]
+    style: "seaborn-v0_8-darkgrid"
+    colors:
+      with_helmet: "#2ecc71"
+      without_helmet: "#e74c3c"
+      warning: "#f39c12"
+      critical: "#c0392b"
+
+# WhatsApp message template
+message_template: |
+  *Daily PPE Compliance Report ({{date}})*
+
+  📊 *Summary*
+  Cameras Monitored: {{num_cameras}}
+  Total Persons Detected: {{total_persons}}
+  ✅ With Helmet: {{with_helmet}} ({{with_helmet_rate}}%)
+  ❌ Without Helmet: {{without_helmet}} ({{violation_rate}}%)
+
+  🚨 *Worst Zone*
+  Zone: {{worst_zone}}
+  Violations: {{worst_count}}
+
+  {{#if_critical}}
+  ⚠️ CRITICAL: Violation rate exceeds {{critical_threshold}}%
+  {{/if_critical}}
+
+  📎 Detailed report attached.
+
+  Generated: {{timestamp}}

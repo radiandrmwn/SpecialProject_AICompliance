@@ -1,0 +1,27 @@
+{
+  "cam_1": {
+    "name": "Construction Site Camera 1",
+    "polygons": [
+      {
+        "name": "CraneBay",
+        "points": [[120, 80], [900, 80], [900, 600], [120, 600]],
+        "mandatory_helmet": true
+      },
+      {
+        "name": "LoadingDock",
+        "points": [[920, 100], [1200, 100], [1200, 500], [920, 500]],
+        "mandatory_helmet": true
+      }
+    ]
+  },
+  "cam_2": {
+    "name": "Construction Site Camera 2",
+    "polygons": [
+      {
+        "name": "ScaffoldArea",
+        "points": [[200, 150], [800, 150], [800, 650], [200, 650]],
+        "mandatory_helmet": true
+      }
+    ]
+  }
+}
