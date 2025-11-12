@@ -21,6 +21,9 @@ from inference.zoning import (
     is_valid_bbox
 )
 
+# Export alias for backward compatibility
+iou = bbox_iou
+
 
 def is_violation(
     person_xyxy: Tuple[float, float, float, float],
