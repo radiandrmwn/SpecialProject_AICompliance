@@ -362,13 +362,23 @@ def main():
 
     args = parser.parse_args()
 
+    # Resolve model path relative to project root
+    model_path = Path(args.model)
+    if not model_path.is_absolute():
+        # If relative path, make it relative to project root
+        model_path = project_root / model_path
+
     # Check if model exists
-    if not Path(args.model).exists():
-        print(f"\n❌ Error: Model not found at {args.model}")
+    if not model_path.exists():
+        print(f"\n❌ Error: Model not found at {model_path}")
         print("\n💡 Tips:")
         print("   - Make sure you've trained the model first")
         print("   - Check the path to best.pt")
+        print(f"   - Project root: {project_root}")
         sys.exit(1)
+
+    # Use resolved absolute path
+    args.model = str(model_path)
 
     try:
         demo = LiveDemo(

@@ -248,6 +248,12 @@ class TelegramBot:
                         message += f"\n⚠️ Top Violators\n"
                         for track_id, count in list(stats['top_violators'])[:3]:
                             message += f"• Track #{track_id}: {count} violations\n"
+
+                        # Add explanation for multiple video uploads
+                        message += f"\n📌 Note: Track IDs reset per video.\n"
+                        message += f"   Same ID across different videos\n"
+                        message += f"   does NOT mean same person.\n"
+                        message += f"   (Useful for long continuous CCTV only)\n"
                 else:
                     message += "⚠️ No detailed stats available\n"
 

@@ -272,6 +272,16 @@ class PDFReportGenerator:
         ]))
 
         elements.append(table)
+
+        # Add explanatory note about Track ID limitations
+        note_text = (
+            "<i><b>Note:</b> Track IDs reset for each video session. "
+            "The same Track ID appearing in different videos does NOT represent the same person. "
+            "This chart is most useful for continuous CCTV footage, not multiple separate video uploads.</i>"
+        )
+        note = Paragraph(note_text, self.styles['CustomBody'])
+        elements.append(note)
+
         elements.append(Spacer(1, 0.3 * inch))
 
     def _add_charts(self, elements: list, charts_path: Path):
