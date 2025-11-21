@@ -139,17 +139,25 @@ class InteractiveTelegramBot:
                 logger.info(f"⚠️ File too large: {file_size / (1024*1024):.1f}MB (max 20MB)")
                 return False
 
-            # Download file
+            # Download file with streaming (for large files)
+            logger.info(f"   📥 Downloading {file_size / (1024*1024):.1f}MB...")
+            download_start = time.time()
+
             file_url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_path}"
-            file_response = requests.get(file_url, timeout=30)
+
+            # Stream download for better performance with large files
+            file_response = requests.get(file_url, stream=True, timeout=60)
             file_response.raise_for_status()
 
             # Save to disk
             save_path.parent.mkdir(parents=True, exist_ok=True)
             with open(save_path, 'wb') as f:
-                f.write(file_response.content)
+                for chunk in file_response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
 
-            logger.info(f"✅ Downloaded file: {save_path} ({file_size / 1024:.1f}KB)")
+            download_time = time.time() - download_start
+            logger.info(f"   ✅ Downloaded in {download_time:.1f}s ({file_size / 1024:.1f}KB)")
             return True
 
         except Exception as e:
@@ -410,6 +418,9 @@ class InteractiveTelegramBot:
         )
 
         try:
+            # Track total processing time
+            total_start = time.time()
+
             # Create temp directory for processing
             temp_dir = Path("temp") / f"video_{chat_id}_{int(time.time())}"
             temp_dir.mkdir(parents=True, exist_ok=True)
@@ -424,11 +435,21 @@ class InteractiveTelegramBot:
                 )
                 return
 
-            # Run inference
+            # Run inference with optimized settings
             logger.info(f"   🔍 Running inference on video...")
+            inference_start = time.time()
+
             from src.inference.video_processor import process_video_for_violations
 
-            results = process_video_for_violations(video_path, temp_dir)
+            results = process_video_for_violations(
+                video_path,
+                temp_dir,
+                sample_rate=1,  # Process every frame for stable tracking
+                resize_width=960  # Resize for speed
+            )
+
+            inference_time = time.time() - inference_start
+            logger.info(f"   ✅ Inference completed in {inference_time:.1f}s")
 
             if results is None:
                 self.send_message(
@@ -454,13 +475,12 @@ class InteractiveTelegramBot:
                 f"• Duration: {duration:.1f} seconds\n"
                 f"• Frames processed: {total_frames}\n\n"
                 f"Violation Results:\n"
-                f"• Unique violators (no helmet & vest): {unique_violators}\n"
-                f"• Compliant persons (with helmet & vest): {compliant}\n"
-                f"• Total detections: {total_violations}\n\n"
+                f"• Violations detected: {unique_violators}\n"
+                f"• Compliant: {compliant}\n\n"
             )
 
             if unique_violators > 0:
-                message += f"⚠️ {unique_violators} person(s) detected without PPE\n\n"
+                message += f"⚠️ {unique_violators} person(s) without proper PPE detected\n\n"
             else:
                 message += "✅ No violations detected - All compliant!\n\n"
 
@@ -482,7 +502,10 @@ class InteractiveTelegramBot:
 
             if annotated_video.exists():
                 logger.info(f"   📤 Sending annotated video...")
+                upload_start = time.time()
                 self.send_video(chat_id, annotated_video, "Annotated video with detections")
+                upload_time = time.time() - upload_start
+                logger.info(f"   ✅ Video sent in {upload_time:.1f}s")
             else:
                 logger.info(f"   ⚠️ Annotated video not found")
 
@@ -530,13 +553,27 @@ class InteractiveTelegramBot:
                 logger.exception("Exception details:")
                 # Non-critical error, continue
 
-            # Cleanup
+            # Log total processing time
+            total_time = time.time() - total_start
+            logger.info(f"\n⏱️  TOTAL PROCESSING TIME: {total_time:.1f}s")
+            logger.info(f"   📥 Download: {download_time if 'download_time' in locals() else 'N/A'}s")
+            logger.info(f"   🔍 Inference: {inference_time if 'inference_time' in locals() else 'N/A'}s")
+            logger.info(f"   📤 Upload: {upload_time if 'upload_time' in locals() else 'N/A'}s")
+
+            # Cleanup temporary files
             import shutil
             try:
                 shutil.rmtree(temp_dir)
-                logger.info(f"   🧹 Cleaned up temporary files")
-            except:
-                pass
+                logger.info(f"   🧹 Cleaned up temporary files: {temp_dir}")
+            except Exception as cleanup_error:
+                logger.warning(f"   ⚠️ Could not delete temp folder: {cleanup_error}")
+                # Try again with error handling
+                try:
+                    time.sleep(1)  # Wait briefly
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.info(f"   🧹 Cleanup succeeded on retry")
+                except:
+                    logger.warning(f"   ⚠️ Temp files may remain: {temp_dir}")
 
         except Exception as e:
             logger.info(f"❌ Error processing video: {e}")
@@ -549,6 +586,15 @@ class InteractiveTelegramBot:
                 f"An error occurred: {str(e)}\n\n"
                 f"Please contact administrator if issue persists."
             )
+
+            # Cleanup on error
+            if 'temp_dir' in locals():
+                import shutil
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.info(f"   🧹 Cleaned up temp files after error")
+                except:
+                    pass
 
     def send_video(self, chat_id: int, video_path: Path, caption: str = ""):
         """Send video file to chat with extended timeout for large files."""

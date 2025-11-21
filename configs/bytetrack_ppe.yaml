@@ -1,0 +1,14 @@
+# Custom ByteTrack Configuration for PPE Detection
+# Optimized for handling occlusion (people getting close to each other)
+
+tracker_type: bytetrack  # Tracker type
+
+# Track buffer parameters
+track_high_thresh: 0.5  # High confidence threshold for track initiation
+track_low_thresh: 0.1   # Low confidence threshold for track recovery (LOWER = better occlusion handling)
+new_track_thresh: 0.6   # Threshold for creating new tracks (HIGHER = less likely to create new IDs)
+track_buffer: 60        # Number of frames to keep lost tracks (HIGHER = better for occlusion)
+match_thresh: 0.8       # Matching threshold for association (LOWER = more permissive matching)
+
+# Frame rate (will be auto-detected from video)
+frame_rate: 30

@@ -513,8 +513,7 @@ python scripts/daily_report_automation.py
 
 ```
 ppe-watch/
-├── README.md                          # This file
-├── CLAUDE.md                          # Development guide
+├── README.md                          # Development guide
 ├── COMPLETE_WORKFLOW.md               # End-to-end workflow
 ├── TELEGRAM_BOT_VIDEO_GUIDE.md        # Bot usage guide
 ├── SCHEDULER_SETUP.md                 # Scheduling guide
@@ -605,70 +604,266 @@ ppe-watch/
 ### Complete End-to-End Workflow
 
 ```
-┌─────────────────┐
-│  Supervisor     │
-│  uploads video  │
-│  to Telegram    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Telegram Bot receives video            │
-│  Downloads to temp/ directory           │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Video Processor Pipeline               │
-│  ├─ Load YOLOv8 models (person + PPE)   │
-│  ├─ Process frame by frame              │
-│  │  ├─ Detect persons                   │
-│  │  ├─ Detect helmets & vests           │
-│  │  ├─ Track persons (ByteTrack)        │
-│  │  ├─ Check head region for helmet     │
-│  │  ├─ Check body for vest              │
-│  │  ├─ Determine violation status       │
-│  │  └─ Draw annotations on frame        │
-│  ├─ Save annotated video (AVI)          │
-│  └─ Log events to CSV                   │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Report Generation Triggered            │
-│  ├─ Aggregate events from today's CSV   │
-│  ├─ Calculate statistics                │
-│  │  ├─ Total events                     │
-│  │  ├─ Unique violators (by track ID)   │
-│  │  ├─ Violations per zone              │
-│  │  └─ Top violators                    │
-│  ├─ Generate bar chart (violations)     │
-│  └─ Create PDF report with summary      │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Telegram Bot sends results             │
-│  ├─ Annotated video with detections     │
-│  ├─ CSV report (events_YYYY-MM-DD.csv)  │
-│  ├─ PNG chart (report_YYYY-MM-DD.png)   │
-│  └─ PDF summary (report_YYYY-MM-DD.pdf) │
-└────────┬────────────────────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Supervisor     │
-│  reviews report │
-│  and video      │
-└─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER: Upload Video to Telegram               │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  TELEGRAM BOT: Receive Video Message                            │
+│  • Get file_id and file_size                                    │
+│  • Validate size (max 20MB)                                     │
+│  • Send "Processing..." message to user                         │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  DOWNLOAD: Stream Video from Telegram API                       │
+│  • Timeout: 60s                                                 │
+│  • Chunk size: 8192 bytes                                       │
+│  • Save to: temp/video_{chat_id}_{timestamp}/input_video.mp4   │
+│  • Log download time                                            │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  INITIALIZATION: Load Models & Setup                            │
+│  • Load YOLOv8 Helmet Model (best.pt)                           │
+│  • Load YOLOv8 Person Model (yolov8s.pt)                        │
+│  • Initialize TrackState (for deduplication)                    │
+│  • Initialize EventsWriter (for logging)                        │
+│  • Get video properties (fps, resolution, frame count)          │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  VIDEO PROCESSING LOOP: For Each Frame                          │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Read Frame from Video                                 │  │
+│  │    • Skip if frame_idx % sample_rate != 0 (speed up)     │  │
+│  │    • Resize to 960px width if specified (speed up)       │  │
+│  └──────────────────────┬───────────────────────────────────┘  │
+│                         │                                       │
+│                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 2. DETECT PERSONS (YOLOv8 Person Model)                  │  │
+│  │    • conf_thresh = 0.3                                    │  │
+│  │    • imgsz = 640 (model input size)                       │  │
+│  │    • Enable tracking (ByteTrack)                          │  │
+│  │    • Get track_id for each person                         │  │
+│  └──────────────────────┬───────────────────────────────────┘  │
+│                         │                                       │
+│                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 3. DETECT PPE (YOLOv8 Helmet Model)                      │  │
+│  │    • Detect helmets (class 0)                             │  │
+│  │    • Detect vests (class 1)                               │  │
+│  │    • conf_thresh = 0.25                                   │  │
+│  │    • Filter by confidence > 0.25                          │  │
+│  │    • Store helmet_boxes[] and vest_boxes[]                │  │
+│  └──────────────────────┬───────────────────────────────────┘  │
+│                         │                                       │
+│                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 4. FOR EACH DETECTED PERSON                               │  │
+│  │                                                            │  │
+│  │  A. Get person bounding box (x1, y1, x2, y2)              │  │
+│  │  B. Get track_id from ByteTrack                           │  │
+│  │                                                            │  │
+│  │  C. CHECK FOR HELMET:                                     │  │
+│  │     • Calculate head region (top 35% of person box)       │  │
+│  │     • For each helmet_box in helmet_boxes:                │  │
+│  │       - Calculate IoU(helmet_box, head_region)            │  │
+│  │       - If IoU > 0.10 → has_helmet = True                 │  │
+│  │                                                            │  │
+│  │  D. CHECK FOR VEST:                                       │  │
+│  │     • For each vest_box in vest_boxes:                    │  │
+│  │       - Calculate IoU(vest_box, person_box)               │  │
+│  │       - If IoU > 0.15 → has_vest = True                   │  │
+│  │                                                            │  │
+│  │  E. VIOLATION LOGIC:                                      │  │
+│  │     is_violator = (NOT has_helmet) OR (NOT has_vest)     │  │
+│  │                                                            │  │
+│  │     ┌─────────────────────────────────────┐               │  │
+│  │     │ DECISION MATRIX:                    │               │  │
+│  │     │                                     │               │  │
+│  │     │ Helmet | Vest  | Result | Label    │               │  │
+│  │     │ -------|-------|--------|-------    │               │  │
+│  │     │  ✅    |  ✅   | ✅ OK   | (none)   │               │  │
+│  │     │  ✅    |  ❌   | ❌ VIO  | NO VEST  │               │  │
+│  │     │  ❌    |  ✅   | ❌ VIO  | NO HELMET│               │  │
+│  │     │  ❌    |  ❌   | ❌ VIO  | NO H & V │               │  │
+│  │     └─────────────────────────────────────┘               │  │
+│  │                                                            │  │
+│  │  F. CHECK TRACK STATE (prevent double counting):          │  │
+│  │     • If track_id already counted for this zone today     │  │
+│  │       → Skip (don't log event)                            │  │
+│  │     • Else:                                                │  │
+│  │       → Mark track_id as counted                          │  │
+│  │       → Increment violation counter                       │  │
+│  │       → Log event to CSV                                  │  │
+│  │                                                            │  │
+│  │  G. DRAW ANNOTATIONS:                                     │  │
+│  │     • Color: RED if violator, GREEN if compliant          │  │
+│  │     • Label: "ID:{track_id} {status}"                     │  │
+│  │       where status = "NO HELMET" | "NO VEST" |            │  │
+│  │                     "NO HELMET & NO VEST" | "COMPLIANT"   │  │
+│  │     • Draw bbox and label on frame                        │  │
+│  └──────────────────────┬───────────────────────────────────┘  │
+│                         │                                       │
+│                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 5. Write Frame to Output Video                            │  │
+│  │    • Codec: XVID (AVI)                                    │  │
+│  │    • Include frame stats overlay                          │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  [Loop back to next frame]                                      │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  FINALIZE VIDEO PROCESSING                                      │
+│  • Close video writer                                           │
+│  • Save annotated video: output_annotated.avi                   │
+│  • Calculate final statistics                                   │
+│  • Log total processing time                                    │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  REPORT GENERATION                                              │
+│  • Load events from events_YYYY-MM-DD.csv                       │
+│  • Aggregate statistics:                                        │
+│    - Total unique violators                                     │
+│    - Total violations                                           │
+│    - Violations per zone                                        │
+│    - Hourly distribution                                        │
+│    - Top 10 repeat violators                                    │
+│  • Generate bar chart (violations by zone)                      │
+│  • Generate pie chart (compliance summary)                      │
+│  • Create PDF report with KPIs                                  │
+│  • Save: report_YYYY-MM-DD.{csv,png,pdf}                        │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  SEND RESULTS TO USER (Telegram)                                │
+│  • Send text summary with statistics                            │
+│  • Upload annotated video (with timeout based on file size)     │
+│  • Send updated report link                                     │
+│  • Log upload time                                              │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CLEANUP                                                         │
+│  • Delete temp/video_{chat_id}_{timestamp}/ directory           │
+│  • Log total time breakdown:                                    │
+│    - Download time                                              │
+│    - Inference time                                             │
+│    - Upload time                                                │
+│    - Total time                                                 │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  USER: Receives Annotated Video + Report                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Workflow Features:**
-1. **Asynchronous Processing:** Bot responds immediately while processing in background
-2. **Event Persistence:** All detections saved to CSV for historical analysis
-3. **Automatic Aggregation:** Reports regenerated automatically after each video
-4. **Multi-Format Output:** CSV (raw data), PNG (visualization), PDF (summary)
-5. **Cleanup:** Temporary files deleted after processing
+### Violation Detection Logic (Detailed)
+
+```
+For each person detected:
+
+    1. Extract person bounding box: (x1, y1, x2, y2)
+
+    2. Calculate head region:
+       head_y2 = y1 + (y2 - y1) * 0.35  // Top 35% of person
+       head_region = (x1, y1, x2, head_y2)
+
+    3. Check helmet presence:
+       has_helmet = False
+       for each helmet_box in detected_helmets:
+           if IoU(helmet_box, head_region) > 0.10:
+               has_helmet = True
+               break
+
+    4. Check vest presence:
+       has_vest = False
+       for each vest_box in detected_vests:
+           if IoU(vest_box, person_box) > 0.15:
+               has_vest = True
+               break
+
+    5. Determine violation status:
+       is_violator = (NOT has_helmet) OR (NOT has_vest)
+
+    6. Build label:
+       if is_violator:
+           missing_items = []
+           if NOT has_helmet: missing_items.append("NO HELMET")
+           if NOT has_vest: missing_items.append("NO VEST")
+           label = " & ".join(missing_items)
+           color = RED
+       else:
+           label = "COMPLIANT"
+           color = GREEN
+
+    7. Check if should count (prevent double counting):
+       if track_state.should_count(track_id, zone):
+           if is_violator:
+               violations_count += 1
+               log_event_to_csv()
+           track_state.mark_counted(track_id, zone)
+
+    8. Draw annotation:
+       draw_box(frame, person_box, color)
+       draw_label(frame, f"ID:{track_id} {label}", color)
+```
+
+### Key Optimizations
+
+1. **Smart Frame Sampling:** Run person tracking on ALL frames, PPE detection on every 4th frame (~3x faster while maintaining stable IDs)
+2. **Video Resizing:** Resize to 960px width (2-4x faster)
+3. **Model Input Size:** Use imgsz=640 (1.5-2x faster)
+4. **Streaming Download:** Use chunked download (more reliable)
+5. **Track-based Deduplication:** Count each person once per zone with stable tracking
+
+### Important Note on Violation Counting
+
+The system uses **ByteTrack** for tracking people across frames with improved stability.
+
+**How counting works:**
+- Person tracking runs on **every frame** to maintain stable IDs
+- PPE detection (helmet/vest) runs on sampled frames for speed
+- Each unique track ID without proper PPE is counted once
+- If someone **completely leaves the frame and returns**, they get a new ID and are counted again
+
+**Example scenarios:**
+
+**Scenario 1: Continuous presence (most common)**
+- 2 people stay in frame entire video, both violating
+- Report shows: **"Total violations detected: 2"** ✅
+- Track IDs remain stable throughout video
+
+**Scenario 2: Brief occlusion**
+- Person temporarily blocked by object or person
+- Tracking usually maintains same ID
+- Report shows: **"Total violations detected: 2"** ✅
+
+**Scenario 3: People entering/leaving frame**
+- Person A enters → violation #1
+- Person B enters → violation #2
+- Person A **completely exits** and returns → violation #3 (new track ID)
+- Report shows: **"Total violations detected: 3"**
+
+**For most accurate counting:**
+- Use fixed camera angle covering the work area
+- Minimize complete exits from frame
+- System works best for continuous monitoring scenarios
 
 ---
 
@@ -1043,10 +1238,9 @@ process_every_n = 2  # Process every 2nd frame
 
 ### Getting Help
 
-1. **Check documentation:** Read `CLAUDE.md` for detailed guide
-2. **Check logs:** Review terminal output for error messages
-3. **Check issues:** Search GitHub issues for similar problems
-4. **Open issue:** Create new issue with error details and logs
+1. **Check logs:** Review terminal output for error messages
+2. **Check issues:** Search GitHub issues for similar problems
+3. **Open issue:** Create new issue with error details and logs
 
 ---
 
@@ -1102,14 +1296,6 @@ This project is developed as a special project for educational purposes at Asia 
 
 ---
 
-## Contact
-
-For questions or support:
-- **GitHub Issues:** [Open an issue](https://github.com/your-username/ppe-watch/issues)
-- **Email:** your.email@example.com
-
----
-
 ## Changelog
 
 ### v1.0.0 (2025-11-12)
@@ -1124,5 +1310,3 @@ For questions or support:
 - Webcam testing support
 
 ---
-
-**Built with ❤️ for workplace safety**

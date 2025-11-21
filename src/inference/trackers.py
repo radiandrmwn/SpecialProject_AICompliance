@@ -39,6 +39,13 @@ class TrackState:
         # track_id -> last zone
         self._last_zone: Dict[int, str] = {}
 
+        # track_id -> PPE status history (for occlusion handling)
+        # Stores last known PPE status: {'has_helmet': bool, 'has_vest': bool, 'frame': int}
+        self._ppe_history: Dict[int, Dict] = {}
+
+        # track_id -> violation frame counter (require violations in multiple frames)
+        self._violation_frames: Dict[int, int] = defaultdict(int)
+
         # Current tracking date
         self._current_date: date = datetime.now().date()
 
@@ -259,3 +266,52 @@ class TrackState:
 
         self._last_seen = {int(k): float(v) for k, v in state_dict['last_seen'].items()}
         self._last_zone = {int(k): str(v) for k, v in state_dict['last_zone'].items()}
+
+    def update_ppe_status(self, track_id: int, has_helmet: bool, has_vest: bool, frame_idx: int, confidence: float = 1.0):
+        """
+        Update PPE status history for a track.
+
+        Used to handle occlusion - if we can't detect PPE due to occlusion,
+        we can use the last known status.
+
+        Args:
+            track_id: Track identifier
+            has_helmet: Whether helmet is detected
+            has_vest: Whether vest is detected
+            frame_idx: Current frame number
+            confidence: Confidence in this detection (1.0 = full visibility, <1.0 = partial occlusion)
+        """
+        if confidence > 0.7:  # Only update history if we're confident (person clearly visible)
+            self._ppe_history[track_id] = {
+                'has_helmet': has_helmet,
+                'has_vest': has_vest,
+                'frame': frame_idx,
+                'confidence': confidence
+            }
+
+    def get_ppe_status(self, track_id: int, frame_idx: int, max_frame_gap: int = 30) -> Dict:
+        """
+        Get last known PPE status for a track.
+
+        Returns the last known PPE status if it's recent (within max_frame_gap frames).
+        Useful for handling temporary occlusion.
+
+        Args:
+            track_id: Track identifier
+            frame_idx: Current frame number
+            max_frame_gap: Maximum frames since last status update (default: 30 = ~1 second at 30fps)
+
+        Returns:
+            Dictionary with 'has_helmet', 'has_vest', or None if no recent history
+        """
+        if track_id not in self._ppe_history:
+            return None
+
+        last_status = self._ppe_history[track_id]
+        frame_gap = frame_idx - last_status['frame']
+
+        # Only use history if it's recent (within max_frame_gap)
+        if frame_gap <= max_frame_gap:
+            return last_status
+
+        return None
