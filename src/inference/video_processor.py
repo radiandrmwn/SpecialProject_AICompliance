@@ -41,7 +41,8 @@ def process_video_for_violations(
     camera_id: str = "telegram_upload",  # Camera ID for logging
     save_events: bool = True,  # Whether to save to events log
     events_dir: str = "events",  # Events directory
-    resize_width: int = 960  # Resize width for faster processing (None = no resize)
+    resize_width: int = 960,  # Resize width for faster processing (None = no resize)
+    save_violation_screenshots: bool = True  # Save screenshot for each unique violator
 ) -> Optional[Dict]:
     """
     Process video to detect PPE violations.
@@ -135,6 +136,14 @@ def process_video_for_violations(
     if save_events:
         events_writer = EventsWriter(events_dir)
         print(f"   📝 Events will be saved to: {events_dir}/")
+
+    # Setup violation screenshots directory
+    violations_dir = None
+    photographed_violators = set()  # Track which violators we've photographed
+    if save_violation_screenshots:
+        violations_dir = output_dir / "violations"
+        violations_dir.mkdir(exist_ok=True)
+        print(f"   📸 Violation screenshots will be saved to: {violations_dir}/")
 
     # Statistics
     stats = {
@@ -279,6 +288,39 @@ def process_video_for_violations(
                                         stats['unique_violators'].add(track_id)
                                         stats['zones']['main_zone'] += 1
                                         stats['total_violations'] += 1
+
+                                        # Save violation screenshot (first time seeing this violator)
+                                        if violations_dir and track_id not in photographed_violators:
+                                            # Create annotated frame for screenshot
+                                            screenshot_frame = frame.copy()
+
+                                            # Draw bounding box and label (same as video annotation)
+                                            color = (0, 0, 255)  # Red for violation
+                                            label = f"ID:{track_id} {violation_label}"
+
+                                            # Draw box
+                                            cv2.rectangle(screenshot_frame, (person_box[0], person_box[1]),
+                                                         (person_box[2], person_box[3]), color, 2)
+
+                                            # Draw label background
+                                            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                                            cv2.rectangle(screenshot_frame,
+                                                         (person_box[0], person_box[1] - label_size[1] - 10),
+                                                         (person_box[0] + label_size[0], person_box[1]),
+                                                         color, -1)
+
+                                            # Draw label text
+                                            cv2.putText(screenshot_frame, label,
+                                                       (person_box[0], person_box[1] - 5),
+                                                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                                            # Save screenshot
+                                            violation_type = violation_label.replace(" & ", "-").replace(" ", "-")
+                                            screenshot_filename = f"violation_track{track_id}_{violation_type}.jpg"
+                                            screenshot_path = violations_dir / screenshot_filename
+                                            cv2.imwrite(str(screenshot_path), screenshot_frame)
+
+                                            photographed_violators.add(track_id)
                                     else:
                                         stats['compliant_persons'].add(track_id)
 

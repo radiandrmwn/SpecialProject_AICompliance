@@ -7,10 +7,12 @@ Shows:
 - Timeline of ID changes
 """
 
-import pandas as pd
-from pathlib import Path
-from datetime import datetime
 import sys
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
 
 def analyze_events(events_csv_path: Path):
     """Analyze events to understand track ID behavior."""
@@ -28,7 +30,6 @@ def analyze_events(events_csv_path: Path):
 
     print(f"\n📈 Total Events: {len(df)}")
     print(f"   Violations: {len(df[df['has_helmet'] == False])}")
-    print(f"   Compliant: {len(df[df['has_helmet'] == True])}")
 
     # Analyze track IDs
     unique_track_ids = df['track_id'].unique()
@@ -108,6 +109,7 @@ def analyze_events(events_csv_path: Path):
         print(f"\n⚠️  WARNING: {len(violator_ids)} violator IDs detected!")
         print(f"   This suggests track ID reassignment is occurring.")
         print(f"   Check the timeline above to see when IDs changed.")
+
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:

@@ -10,14 +10,16 @@ Bot that can respond to commands:
 - /latest - Get latest report available
 """
 
-import sys
-import os
 import json
 import logging
-from pathlib import Path
-from datetime import datetime, date, timedelta
-from typing import Optional
+import os
+import sys
 import time
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+from src.delivery.telegram_bot import TelegramBot
 
 # Setup logging to both file and console
 log_dir = Path(__file__).parent.parent.parent / 'logs'
@@ -43,15 +45,14 @@ if sys.platform == 'win32':
         pass  # Might fail if running with pythonw (no stdout)
 
 try:
-    from dotenv import load_dotenv
     import requests
+    from dotenv import load_dotenv
 except ImportError:
     logger.info("\n❌ Error: Required packages not installed")
     logger.info("📦 Install with: pip install python-dotenv requests")
     sys.exit(1)
 
 # Import existing TelegramBot class
-from src.delivery.telegram_bot import TelegramBot
 
 
 class InteractiveTelegramBot:
@@ -123,7 +124,8 @@ class InteractiveTelegramBot:
         try:
             # Get file path
             url = f"{self.base_url}/getFile"
-            response = requests.get(url, params={'file_id': file_id}, timeout=10)
+            response = requests.get(
+                url, params={'file_id': file_id}, timeout=10)
             response.raise_for_status()
             data = response.json()
 
@@ -136,7 +138,8 @@ class InteractiveTelegramBot:
 
             # Check file size (Telegram bot API limit is 20MB)
             if file_size > 20 * 1024 * 1024:
-                logger.info(f"⚠️ File too large: {file_size / (1024*1024):.1f}MB (max 20MB)")
+                logger.info(
+                    f"⚠️ File too large: {file_size / (1024*1024):.1f}MB (max 20MB)")
                 return False
 
             # Download file with streaming (for large files)
@@ -157,7 +160,8 @@ class InteractiveTelegramBot:
                         f.write(chunk)
 
             download_time = time.time() - download_start
-            logger.info(f"   ✅ Downloaded in {download_time:.1f}s ({file_size / 1024:.1f}KB)")
+            logger.info(
+                f"   ✅ Downloaded in {download_time:.1f}s ({file_size / 1024:.1f}KB)")
             return True
 
         except Exception as e:
@@ -250,8 +254,10 @@ class InteractiveTelegramBot:
         model_exist = model_path.exists()
 
         # Count files
-        event_files = len(list(events_dir.glob("*.csv"))) if events_exist else 0
-        report_files = len(list(reports_dir.glob("*.pdf"))) if reports_exist else 0
+        event_files = len(list(events_dir.glob("*.csv"))
+                          ) if events_exist else 0
+        report_files = len(list(reports_dir.glob("*.pdf"))
+                           ) if reports_exist else 0
 
         # Get latest event
         latest_event = None
@@ -383,7 +389,8 @@ class InteractiveTelegramBot:
             f"Sending..."
         )
 
-        logger.info(f"📤 Sending latest report ({date_str}) to Chat ID: {chat_id}")
+        logger.info(
+            f"📤 Sending latest report ({date_str}) to Chat ID: {chat_id}")
 
         # Send report
         temp_bot = TelegramBot(self.bot_token, str(chat_id))
@@ -394,8 +401,10 @@ class InteractiveTelegramBot:
         file_id = video_data.get('file_id')
         file_size = video_data.get('file_size', 0)
 
-        logger.info(f"\n🎥 Video received from {user_name} (Chat ID: {chat_id})")
-        logger.info(f"   File ID: {file_id}, Size: {file_size / (1024*1024):.2f}MB")
+        logger.info(
+            f"\n🎥 Video received from {user_name} (Chat ID: {chat_id})")
+        logger.info(
+            f"   File ID: {file_id}, Size: {file_size / (1024*1024):.2f}MB")
 
         # Check file size (20MB limit for Telegram Bot API)
         if file_size > 20 * 1024 * 1024:
@@ -439,12 +448,14 @@ class InteractiveTelegramBot:
             logger.info(f"   🔍 Running inference on video...")
             inference_start = time.time()
 
-            from src.inference.video_processor import process_video_for_violations
+            from src.inference.video_processor import \
+                process_video_for_violations
 
             results = process_video_for_violations(
                 video_path,
                 temp_dir,
-                sample_rate=2,  # Process every 2nd frame (2x speed, BoT-SORT maintains stability)
+                # Process every 2nd frame (2x speed, BoT-SORT maintains stability)
+                sample_rate=2,
                 resize_width=960  # Resize for speed
             )
 
@@ -471,18 +482,21 @@ class InteractiveTelegramBot:
 
             message = (
                 f"✅ Processing Complete\n\n"
-                f"Video Statistics:\n"
-                f"• Duration: {duration:.1f} seconds\n"
-                f"• Frames processed: {total_frames}\n\n"
-                f"Violation Results:\n"
-                f"• Violations detected: {unique_violators}\n"
-                f"• Compliant: {compliant}\n\n"
+                f"📹 Video: {duration:.1f}s | {total_frames} frames\n\n"
             )
 
             if unique_violators > 0:
-                message += f"⚠️ {unique_violators} person(s) without proper PPE detected\n\n"
+                message += (
+                    f"⚠️ VIOLATIONS DETECTED\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"• Violations Detected: {unique_violators}\n\n"
+                )
             else:
-                message += "✅ No violations detected - All compliant!\n\n"
+                message += (
+                    f"✅ NO VIOLATIONS\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"All persons wearing proper PPE\n\n"
+                )
 
             # Add zone breakdown if available
             if results.get('zones'):
@@ -503,11 +517,54 @@ class InteractiveTelegramBot:
             if annotated_video.exists():
                 logger.info(f"   📤 Sending annotated video...")
                 upload_start = time.time()
-                self.send_video(chat_id, annotated_video, "Annotated video with detections")
+                self.send_video(chat_id, annotated_video,
+                                "Annotated video with detections")
                 upload_time = time.time() - upload_start
                 logger.info(f"   ✅ Video sent in {upload_time:.1f}s")
             else:
                 logger.info(f"   ⚠️ Annotated video not found")
+
+            # Send violation screenshots if available
+            violations_dir = temp_dir / "violations"
+            if violations_dir.exists():
+                screenshot_files = list(violations_dir.glob("*.jpg"))
+
+                if screenshot_files:
+                    logger.info(
+                        f"   📸 Sending {len(screenshot_files)} violation screenshot(s)...")
+
+                    # Send header message
+                    self.send_message(
+                        chat_id,
+                        f"\n📸 Violation Screenshots\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"Found {unique_violators} unique violator(s)\n"
+                        f"Sending evidence photos..."
+                    )
+
+                    # Send each screenshot with caption
+                    for screenshot_path in screenshot_files:
+                        # Extract info from filename: violation_track1_NO-HELMET.jpg
+                        filename = screenshot_path.stem  # Without extension
+                        parts = filename.split('_')
+
+                        if len(parts) >= 3:
+                            track_id = parts[1].replace('track', '')
+                            violation_type = ' '.join(
+                                parts[2:]).replace('-', ' ')
+                            caption = f"⚠️ Track #{track_id}: {violation_type}"
+                        else:
+                            caption = "⚠️ Violation detected"
+
+                        # Send photo
+                        self.send_photo(chat_id, screenshot_path, caption)
+
+                    logger.info(f"   ✅ Screenshots sent")
+                elif unique_violators == 0:
+                    logger.info(f"   ✅ No violations - no screenshots needed")
+                else:
+                    logger.info(
+                        f"   ℹ️ Violations detected but no screenshots saved")
 
             # Generate updated daily report
             try:
@@ -521,7 +578,8 @@ class InteractiveTelegramBot:
                 from src.reporting.make_pdf import PDFReportGenerator
 
                 # Aggregate events
-                aggregator = DailyAggregator(events_dir="events", reports_dir="reports")
+                aggregator = DailyAggregator(
+                    events_dir="events", reports_dir="reports")
                 stats = aggregator.generate_report(today)
 
                 if stats:
@@ -531,7 +589,8 @@ class InteractiveTelegramBot:
 
                     # Generate PDF
                     pdf_gen = PDFReportGenerator()
-                    pdf_path = pdf_gen.generate_report(today, stats, charts_path)
+                    pdf_path = pdf_gen.generate_report(
+                        today, stats, charts_path)
 
                     logger.info(f"   ✅ Report updated: {pdf_path}")
 
@@ -546,7 +605,8 @@ class InteractiveTelegramBot:
                     logger.info(f"   ℹ️ No aggregated stats available yet")
 
             except FileNotFoundError:
-                logger.info(f"   ℹ️ Events file not found yet (will be created on next event)")
+                logger.info(
+                    f"   ℹ️ Events file not found yet (will be created on next event)")
             except Exception as e:
                 logger.info(f"   ⚠️ Could not regenerate report: {e}")
                 import traceback
@@ -556,9 +616,12 @@ class InteractiveTelegramBot:
             # Log total processing time
             total_time = time.time() - total_start
             logger.info(f"\n⏱️  TOTAL PROCESSING TIME: {total_time:.1f}s")
-            logger.info(f"   📥 Download: {download_time if 'download_time' in locals() else 'N/A'}s")
-            logger.info(f"   🔍 Inference: {inference_time if 'inference_time' in locals() else 'N/A'}s")
-            logger.info(f"   📤 Upload: {upload_time if 'upload_time' in locals() else 'N/A'}s")
+            logger.info(
+                f"   📥 Download: {download_time if 'download_time' in locals() else 'N/A'}s")
+            logger.info(
+                f"   🔍 Inference: {inference_time if 'inference_time' in locals() else 'N/A'}s")
+            logger.info(
+                f"   📤 Upload: {upload_time if 'upload_time' in locals() else 'N/A'}s")
 
             # Cleanup temporary files
             import shutil
@@ -566,7 +629,8 @@ class InteractiveTelegramBot:
                 shutil.rmtree(temp_dir)
                 logger.info(f"   🧹 Cleaned up temporary files: {temp_dir}")
             except Exception as cleanup_error:
-                logger.warning(f"   ⚠️ Could not delete temp folder: {cleanup_error}")
+                logger.warning(
+                    f"   ⚠️ Could not delete temp folder: {cleanup_error}")
                 # Try again with error handling
                 try:
                     time.sleep(1)  # Wait briefly
@@ -616,15 +680,36 @@ class InteractiveTelegramBot:
                     'caption': caption
                 }
                 logger.info(f"   📤 Uploading video to Telegram...")
-                response = requests.post(url, data=data, files=files, timeout=timeout)
+                response = requests.post(
+                    url, data=data, files=files, timeout=timeout)
                 response.raise_for_status()
                 logger.info(f"   ✅ Video sent successfully!")
                 return response.json()
         except requests.exceptions.Timeout:
-            logger.info(f"❌ Upload timeout after {timeout}s - video too large or slow connection")
+            logger.info(
+                f"❌ Upload timeout after {timeout}s - video too large or slow connection")
             return None
         except Exception as e:
             logger.info(f"❌ Error sending video: {e}")
+            return None
+
+    def send_photo(self, chat_id: int, photo_path: Path, caption: str = ""):
+        """Send photo file to chat."""
+        url = f"{self.base_url}/sendPhoto"
+
+        try:
+            with open(photo_path, 'rb') as photo_file:
+                files = {'photo': photo_file}
+                data = {
+                    'chat_id': chat_id,
+                    'caption': caption
+                }
+                response = requests.post(
+                    url, data=data, files=files, timeout=60)
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.info(f"❌ Error sending photo: {e}")
             return None
 
     def handle_unknown(self, chat_id: int, command: str):
@@ -675,7 +760,8 @@ class InteractiveTelegramBot:
         command = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else None
 
-        logger.info(f"\n📩 Command received: {command} from {user_name} (Chat ID: {chat_id})")
+        logger.info(
+            f"\n📩 Command received: {command} from {user_name} (Chat ID: {chat_id})")
 
         # Route to handlers
         if command == '/start':
