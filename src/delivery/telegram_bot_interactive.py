@@ -444,7 +444,7 @@ class InteractiveTelegramBot:
             results = process_video_for_violations(
                 video_path,
                 temp_dir,
-                sample_rate=1,  # Process every frame for stable tracking
+                sample_rate=2,  # Process every 2nd frame (2x speed, BoT-SORT maintains stability)
                 resize_width=960  # Resize for speed
             )
 

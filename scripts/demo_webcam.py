@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PPE-Watch Live Webcam Demo
+PPE-Watch Live Webcam Demo (Production-Grade)
 
 Real-time helmet and vest detection demo using webcam.
-Perfect for testing and demonstrations.
+Includes all production enhancements:
+- BoT-SORT tracker for stable track IDs
+- Full PPE detection (helmet + vest)
+- Occlusion handling with PPE history
+- Unique person counting
 
 Usage:
     python scripts/demo_webcam.py
@@ -48,7 +52,8 @@ class LiveDemo:
             person_model_path: Path to person detection model
         """
         print("\n" + "=" * 70)
-        print("PPE-Watch Live Webcam Demo (with Unique Person Tracking)")
+        print("PPE-Watch Live Webcam Demo (Production-Grade)")
+        print("BoT-SORT Tracking | Full PPE | Occlusion Handling")
         print("=" * 70)
 
         print("\n📦 Loading models...")
@@ -74,13 +79,16 @@ class LiveDemo:
         self.fps = 0
 
     def detect_persons(self, frame):
-        """Detect persons with tracking."""
+        """Detect persons with tracking using BoT-SORT for stability."""
+        # Use BoT-SORT tracker for stable track IDs (same as production)
         results = self.person_model.track(
             frame,
             conf=0.5,
             classes=[0],  # person class
             persist=True,
-            verbose=False
+            tracker="botsort.yaml",  # BoT-SORT for stable tracking
+            verbose=False,
+            imgsz=640
         )
 
         persons = []
@@ -132,43 +140,72 @@ class LiveDemo:
 
         for helmet in helmets:
             iou = bbox_iou(helmet['bbox'], head)
-            if iou > 0.05:
+            if iou > 0.10:  # Increased threshold for better accuracy
                 return True, helmet['confidence']
 
         return False, 0.0
 
-    def draw_detection(self, frame, person, has_helmet, helmet_conf):
-        """Draw detection boxes and labels."""
+    def check_vest_on_person(self, person_bbox, vests):
+        """Check if person has reflective vest on body."""
+        for vest in vests:
+            iou = bbox_iou(vest['bbox'], person_bbox)
+            if iou > 0.15:  # Body overlap threshold
+                return True, vest['confidence']
+
+        return False, 0.0
+
+    def draw_detection(self, frame, person, has_helmet, has_vest, helmet_conf, vest_conf):
+        """Draw detection boxes and labels with full PPE status."""
         x1, y1, x2, y2 = map(int, person['bbox'])
         track_id = person['track_id']
 
-        # Color: Green if helmet, Red if no helmet
-        color = (0, 255, 0) if has_helmet else (0, 0, 255)
-        thickness = 3 if not has_helmet else 2
+        # Color: Green if compliant (both helmet AND vest), Red if violation
+        is_compliant = has_helmet and has_vest
+        color = (0, 255, 0) if is_compliant else (0, 0, 255)
+        thickness = 2 if is_compliant else 3
 
         # Draw person box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
 
-        # Label
+        # Build label with PPE status
         label = f"Person"
         if track_id is not None:
             label += f" #{track_id}"
 
+        # Add PPE status
+        ppe_status = []
         if has_helmet:
-            label += " ✓ HELMET"
+            ppe_status.append("✓ HELMET")
+        else:
+            ppe_status.append("✗ NO HELMET")
+
+        if has_vest:
+            ppe_status.append("✓ VEST")
+        else:
+            ppe_status.append("✗ NO VEST")
+
+        label += " | " + " | ".join(ppe_status)
+
+        # Determine overall status
+        if is_compliant:
             status = "COMPLIANT"
         else:
-            label += " ✗ NO HELMET"
             status = "VIOLATION"
 
         # Draw label background
-        (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
         cv2.rectangle(frame, (x1, y1 - 30), (x1 + label_w + 10, y1), color, -1)
-        cv2.putText(frame, label, (x1 + 5, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(frame, label, (x1 + 5, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         # Draw violation warning
-        if not has_helmet:
-            cv2.putText(frame, "⚠ VIOLATION", (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        if not is_compliant:
+            missing = []
+            if not has_helmet:
+                missing.append("NO HELMET")
+            if not has_vest:
+                missing.append("NO VEST")
+            warning = "⚠ " + " & ".join(missing)
+            cv2.putText(frame, warning, (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
         return status
 
@@ -233,9 +270,10 @@ class LiveDemo:
         print("=" * 70)
         print("\n💡 Tips:")
         print("   - Stand 1-2 meters from camera")
-        print("   - Try with and without helmet/hard hat")
-        print("   - Green box = Helmet detected (Compliant)")
-        print("   - Red box = No helmet (Violation)")
+        print("   - Try with/without helmet and reflective vest")
+        print("   - Green box = COMPLIANT (helmet + vest detected)")
+        print("   - Red box = VIOLATION (missing helmet or vest)")
+        print("   - Includes occlusion handling (same as production)")
         print("   - Press 'q' to quit\n")
 
         cv2.namedWindow('PPE-Watch Live Demo', cv2.WINDOW_NORMAL)
@@ -275,11 +313,29 @@ class LiveDemo:
                     self.stats['persons_detected_frames'] += 1
                     track_id = person['track_id']
 
-                    # Check helmet
+                    # Check helmet (head region)
                     has_helmet, helmet_conf = self.check_helmet_on_person(person['bbox'], helmets)
 
-                    # Draw detection
-                    status = self.draw_detection(frame, person, has_helmet, helmet_conf)
+                    # Check vest (body region)
+                    has_vest, vest_conf = self.check_vest_on_person(person['bbox'], vests)
+
+                    # Occlusion handling: Use PPE history if detection fails
+                    # If helmet detected but vest missing, might be temporary occlusion
+                    if track_id is not None and has_helmet and not has_vest:
+                        # Check recent PPE history (last 30 frames = ~1 second)
+                        last_ppe = self.track_state.get_ppe_status(track_id, frame_count, max_frame_gap=30)
+                        if last_ppe is not None and last_ppe.get('has_vest', False):
+                            # Person had vest recently, likely temporary occlusion
+                            has_vest = True  # Use historical status
+
+                    # Update PPE history for this track (for future occlusion handling)
+                    if track_id is not None:
+                        # Calculate visibility confidence based on detection success
+                        visibility = 1.0 if (has_helmet and has_vest) else 0.8
+                        self.track_state.update_ppe_status(track_id, has_helmet, has_vest, frame_count, visibility)
+
+                    # Draw detection (with full PPE status)
+                    status = self.draw_detection(frame, person, has_helmet, has_vest, helmet_conf, vest_conf)
 
                     # Update current frame stats (for display)
                     if status == "VIOLATION":

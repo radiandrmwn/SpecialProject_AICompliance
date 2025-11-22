@@ -236,6 +236,21 @@ def process_video_for_violations(
                             # Check for vest (body overlap)
                             has_vest = any(iou(vest_box, person_box) > 0.15 for vest_box in vest_boxes)
 
+                            # Occlusion handling: Use history if detection fails
+                            # If helmet detected but vest missing, might be temporary occlusion
+                            if track_id is not None and has_helmet and not has_vest:
+                                # Check recent PPE history (last 30 frames = ~1 second)
+                                last_ppe = track_state.get_ppe_status(track_id, frame_idx, max_frame_gap=30)
+                                if last_ppe is not None and last_ppe.get('has_vest', False):
+                                    # Person had vest recently, likely temporary occlusion
+                                    has_vest = True  # Use historical status
+
+                            # Update PPE history for this track (for future occlusion handling)
+                            if track_id is not None:
+                                # Calculate visibility confidence based on detection success
+                                visibility = 1.0 if (has_helmet and has_vest) else 0.8
+                                track_state.update_ppe_status(track_id, has_helmet, has_vest, frame_idx, visibility)
+
                             # Violation if missing EITHER helmet OR vest (both required for compliance)
                             is_violator = not has_helmet or not has_vest
 
