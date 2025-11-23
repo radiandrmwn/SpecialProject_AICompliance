@@ -192,19 +192,20 @@ class InteractiveTelegramBot:
         message = (
             f"👋 Hi {user_name}!\n\n"
             "🤖 PPE-Watch Reporter Bot\n\n"
-            "I can help you with PPE compliance reports!\n\n"
-            "📹 Video Processing:\n"
-            "• Send me a video file to check for violations\n"
+            "I can help you with PPE compliance monitoring!\n\n"
+            "📹 Video Analysis (Demo Mode):\n"
+            "• Send me a video file to test detection\n"
             "• I'll detect people without helmets & vests\n"
-            "• You'll get instant results + annotated video\n\n"
-            "📊 Daily Reports:\n"
+            "• You'll get instant results + annotated video\n"
+            "• ℹ️ Demo only - violations not logged\n\n"
+            "📊 Daily Reports (CCTV Production):\n"
             "• /report - Get today's report\n"
             "• /report YYYY-MM-DD - Get specific date\n"
-            "• /latest - Get most recent report\n\n"
+            "• /latest - Get most recent report\n"
+            "• ℹ️ Available when connected to CCTV\n\n"
             "⚙️ Other Commands:\n"
             "• /status - Check system status\n"
             "• /help - Show help message\n\n"
-            "💡 Tip: Daily reports are generated at 18:00"
         )
 
         self.send_message(chat_id, message)
@@ -214,24 +215,28 @@ class InteractiveTelegramBot:
         """Handle /help command."""
         message = (
             "📚 PPE-Watch Bot Commands\n\n"
-            "🎥 Video Processing:\n"
+            "🎥 Video Analysis (DEMO MODE):\n"
             "• Send a video file (up to 20MB)\n"
             "• I'll process it and detect violations\n"
-            "• You'll receive results + annotated video\n"
+            "• You'll receive:\n"
+            "  - Annotated video with detections\n"
+            "  - Violation screenshots\n"
+            "  - Summary of violations detected\n"
+            "• ℹ️ Demo only - not logged to daily reports\n"
             "• Supported formats: MP4, AVI, MOV\n\n"
-            "📊 Daily Reports:\n"
+            "📊 Daily Reports (CCTV PRODUCTION):\n"
             "• /report - Get today's report\n"
-            "• /report 2025-11-06 - Get specific date\n"
+            "• /report 2025-11-23 - Get specific date\n"
             "• /report yesterday - Get yesterday's report\n"
-            "• /latest - Get most recent available report\n\n"
+            "• /latest - Get most recent available report\n"
+            "• ℹ️ Reports generated from CCTV streams only\n\n"
             "⚙️ System:\n"
             "• /status - Check system status\n"
             "• /help - Show this help message\n\n"
             "Examples:\n"
-            "1. Send video → Get instant analysis\n"
-            "2. /report → Get today's report\n"
-            "3. /report 2025-11-02 → Specific date\n"
-            "4. /latest → Most recent report\n\n"
+            "1. Send test video → Get instant analysis (demo)\n"
+            "2. /report → Get today's CCTV report\n"
+            "3. /latest → Most recent CCTV report\n\n"
             "Need help? Contact your system administrator."
         )
 
@@ -456,7 +461,8 @@ class InteractiveTelegramBot:
                 temp_dir,
                 # Process every 2nd frame (2x speed, BoT-SORT maintains stability)
                 sample_rate=2,
-                resize_width=960  # Resize for speed
+                resize_width=960,  # Resize for speed
+                save_events=False  # DEMO MODE: Don't save events to daily reports
             )
 
             inference_time = time.time() - inference_start
@@ -505,7 +511,16 @@ class InteractiveTelegramBot:
                     message += f"• {zone_name}: {count}\n"
                 message += "\n"
 
-            message += "💡 Tip: Send another video anytime to check compliance"
+            # Demo mode disclaimer
+            message += (
+                f"ℹ️ DEMO MODE\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"This video analysis is for demonstration/testing purposes.\n"
+                f"Violations detected are NOT logged to daily reports.\n\n"
+                f"For production deployment with CCTV integration, all violations\n"
+                f"will be automatically logged and tracked in daily reports.\n\n"
+                f"💡 Tip: Send another video anytime to test the detection system"
+            )
 
             self.send_message(chat_id, message)
 
@@ -566,52 +581,8 @@ class InteractiveTelegramBot:
                     logger.info(
                         f"   ℹ️ Violations detected but no screenshots saved")
 
-            # Generate updated daily report
-            try:
-                from datetime import datetime
-                today = datetime.now().strftime('%Y-%m-%d')
-
-                logger.info(f"   📊 Regenerating daily report for {today}...")
-
-                from src.reporting.aggregate_day import DailyAggregator
-                from src.reporting.charts import ChartGenerator
-                from src.reporting.make_pdf import PDFReportGenerator
-
-                # Aggregate events
-                aggregator = DailyAggregator(
-                    events_dir="events", reports_dir="reports")
-                stats = aggregator.generate_report(today)
-
-                if stats:
-                    # Generate charts
-                    chart_gen = ChartGenerator()
-                    charts_path = chart_gen.generate_charts(today)
-
-                    # Generate PDF
-                    pdf_gen = PDFReportGenerator()
-                    pdf_path = pdf_gen.generate_report(
-                        today, stats, charts_path)
-
-                    logger.info(f"   ✅ Report updated: {pdf_path}")
-
-                    # Send notification about report update
-                    self.send_message(
-                        chat_id,
-                        f"\n📊 Daily Report Updated\n\n"
-                        f"Your video has been added to today's report.\n"
-                        f"Use /report {today} or /latest to view the updated report."
-                    )
-                else:
-                    logger.info(f"   ℹ️ No aggregated stats available yet")
-
-            except FileNotFoundError:
-                logger.info(
-                    f"   ℹ️ Events file not found yet (will be created on next event)")
-            except Exception as e:
-                logger.info(f"   ⚠️ Could not regenerate report: {e}")
-                import traceback
-                logger.exception("Exception details:")
-                # Non-critical error, continue
+            # DEMO MODE: Skip report generation (events not saved)
+            # In production CCTV mode, this section would regenerate daily reports
 
             # Log total processing time
             total_time = time.time() - total_start
